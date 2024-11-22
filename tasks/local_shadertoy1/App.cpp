@@ -75,7 +75,7 @@ App::App()
 
 
   // TODO: Initialize any additional resources you require here!
-  etna::create_program("toy_compute", {LOCAL_SHADERTOY_SHADERS_ROOT "toy.comp.spv"});
+  etna::create_program("toy_compute", {LOCAL_SHADERTOY1_SHADERS_ROOT "toy.comp.spv"});
 
   pipeline = etna::get_context().getPipelineManager().createComputePipeline("toy_compute", {});
   image = etna::get_context().createImage(etna::Image::CreateInfo{

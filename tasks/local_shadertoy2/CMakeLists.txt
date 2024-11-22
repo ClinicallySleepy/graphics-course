@@ -5,7 +5,7 @@ add_executable(local_shadertoy_fragment
 )
 
 target_link_libraries(local_shadertoy_fragment
-  PRIVATE glfw etna glm::glm wsi gui)
+  PRIVATE glfw etna glm::glm wsi gui render_utils scene)
 
 target_add_shaders(local_shadertoy_fragment
   shaders/toy.vert
