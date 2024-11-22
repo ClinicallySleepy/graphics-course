@@ -1,10 +1,24 @@
 #include "App.hpp"
 
+#include <cstdint>
 #include <etna/Etna.hpp>
 #include <etna/GlobalContext.hpp>
 #include <etna/PipelineManager.hpp>
 #include <etna/RenderTargetStates.hpp>
+#include <stdexcept>
 #include <vulkan/vulkan_structs.hpp>
+#include "etna/Image.hpp"
+#include <chrono>
+#include <GLFW/glfw3.h>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+struct PushConstants {
+  glm::vec2 resolution;
+  glm::vec2 mouse;
+  float time;
+} pushConstants;
 
 App::App()
   : resolution{1280, 720}
@@ -78,8 +92,23 @@ App::App()
       "toy_fragment",
       { LOCAL_SHADERTOY_FRAGMENT_SHADERS_ROOT "toy.frag.spv", LOCAL_SHADERTOY_FRAGMENT_SHADERS_ROOT "toy.vert.spv" });
 
+  etna::create_program(
+      "toy_procedural",
+      { LOCAL_SHADERTOY_FRAGMENT_SHADERS_ROOT "procedural.frag.spv", LOCAL_SHADERTOY_FRAGMENT_SHADERS_ROOT "toy.vert.spv" });
+
   graphicsPipeline = etna::get_context().getPipelineManager().createGraphicsPipeline(
       "toy_fragment", 
+      etna::GraphicsPipeline::CreateInfo{
+        .fragmentShaderOutput =
+          {
+            .colorAttachmentFormats = {
+            vk::Format::eB8G8R8A8Srgb,
+            },
+          },
+    });
+
+  proceduralPipeline = etna::get_context().getPipelineManager().createGraphicsPipeline(
+      "toy_procedural", 
       etna::GraphicsPipeline::CreateInfo{
         .fragmentShaderOutput =
           {
@@ -87,7 +116,20 @@ App::App()
           },
     });
 
+  proceduralImage = etna::get_context().createImage(etna::Image::CreateInfo{
+    .extent = vk::Extent3D{resolution.x, resolution.y, 1},
+    .name = "result_image",
+    .format = vk::Format::eB8G8R8A8Srgb,
+    .imageUsage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
+  });
+
   defaultSampler = etna::Sampler(etna::Sampler::CreateInfo{.name = "default_sampler"});
+  checkerSampler = etna::Sampler(etna::Sampler::CreateInfo{
+    .addressMode = vk::SamplerAddressMode::eRepeat,
+    .name = "default_sampler",
+  });
+
+  createCheckerImage();
 }
 
 App::~App()
@@ -109,6 +151,23 @@ void App::run()
   ETNA_CHECK_VK_RESULT(etna::get_context().getDevice().waitIdle());
 }
 
+void App::createCheckerImage() {
+  auto commandBuffer = commandManager->acquireNext();
+  int width, height;
+  auto imageData = stbi_load("../resources/textures/shadertoy_checker.png", &width, &height, nullptr, 4);
+  ETNA_VERIFY(imageData);
+  auto imageInfo = etna::Image::CreateInfo{
+    .extent = vk::Extent3D{static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1},
+    .name = "checker_image",
+    .format = vk::Format::eB8G8R8A8Srgb,
+    .imageUsage = vk::ImageUsageFlagBits::eSampled,
+    .layers = 1,
+    .mipLevels = 1,
+  };
+
+  checkerImage = etna::create_image_from_bytes(imageInfo, commandBuffer, imageData);
+}
+
 void App::drawFrame()
 {
   // First, get a command buffer to write GPU commands into.
@@ -128,49 +187,96 @@ void App::drawFrame()
 
     ETNA_CHECK_VK_RESULT(currentCmdBuf.begin(vk::CommandBufferBeginInfo{}));
     {
+      etna::set_state(
+        currentCmdBuf,
+        proceduralImage.get(),
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ImageAspectFlagBits::eColor);
+      etna::flush_barriers(currentCmdBuf);
 
-      etna::RenderTargetState state{currentCmdBuf,
-        vk::Rect2D{{}, { resolution.x, resolution.y }},
-        {{backbuffer, backbufferView}},
-        {}
+      {
+        etna::RenderTargetState state{
+          currentCmdBuf,
+          vk::Rect2D{{0, 0}, { resolution.x, resolution.y }},
+          {{proceduralImage.get(), proceduralImage.getView({})}},
+          {}
+        };
+
+        currentCmdBuf.bindPipeline(vk::PipelineBindPoint::eGraphics, proceduralPipeline.getVkPipeline());
+        currentCmdBuf.draw(3, 1, 0, 0);
       };
 
-      // auto simpleFragmentInfo = etna::get_shader_program("toy_fragment");
+      etna::set_state(
+        currentCmdBuf,
+        proceduralImage.get(),
+        vk::PipelineStageFlagBits2::eFragmentShader,
+        vk::AccessFlagBits2::eShaderSampledRead,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+        vk::ImageAspectFlagBits::eColor);
+      etna::set_state(
+        currentCmdBuf,
+        checkerImage.get(),
+        vk::PipelineStageFlagBits2::eFragmentShader,
+        vk::AccessFlagBits2::eShaderSampledRead,
+        vk::ImageLayout::eShaderReadOnlyOptimal,
+        vk::ImageAspectFlagBits::eColor);
+      etna::set_state(
+        currentCmdBuf,
+        backbuffer,
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        vk::AccessFlagBits2::eColorAttachmentWrite,
+        vk::ImageLayout::eColorAttachmentOptimal,
+        vk::ImageAspectFlagBits::eColor);
+      etna::flush_barriers(currentCmdBuf);
 
-      // auto set = etna::create_descriptor_set(
-      //   simpleFragmentInfo.getDescriptorLayoutId(0),
-      //   currentCmdBuf,
-      //   {
-      //     etna::Binding{0, image.genBinding(defaultSampler.get(), vk::ImageLayout::eReadOnlyOptimal)},
-      //   });
-      //
-      // vk::DescriptorSet vkSet = set.getVkSet();
+      {
+        etna::RenderTargetState state{currentCmdBuf,
+          vk::Rect2D{{}, { resolution.x, resolution.y }},
+          {
+            {backbuffer, backbufferView},
+          },
+          {}
+        };
 
-      currentCmdBuf.bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline.getVkPipeline());
-      // currentCmdBuf.bindDescriptorSets(
-      //   vk::PipelineBindPoint::eCompute,
-      //   graphicsPipeline.getVkPipelineLayout(),
-      //   0,
-      //   1,
-      //   &vkSet,
-      //   0,
-      //   nullptr);
+        auto graphicsInfo = etna::get_shader_program("toy_fragment");
 
-      // currentCmdBuf.pushConstants(
-      //   pipeline.getVkPipelineLayout(),
-      //   vk::ShaderStageFlagBits::eFragment,
-      //   0,
-      //   sizeof(resolution),
-      //   &resolution);
+        auto set = etna::create_descriptor_set(
+          graphicsInfo.getDescriptorLayoutId(0),
+          currentCmdBuf,
+          {
+            etna::Binding{0, proceduralImage.genBinding(defaultSampler.get(), vk::ImageLayout::eShaderReadOnlyOptimal)},
+            etna::Binding{1, checkerImage.genBinding(checkerSampler.get(), vk::ImageLayout::eShaderReadOnlyOptimal)},
+          });
 
-      currentCmdBuf.draw(3, 1, 0, 0);
+        vk::DescriptorSet vkSet = set.getVkSet();
 
-      // etna::flush_barriers(currentCmdBuf);
+        currentCmdBuf.bindPipeline(vk::PipelineBindPoint::eGraphics, graphicsPipeline.getVkPipeline());
+        currentCmdBuf.bindDescriptorSets(
+          vk::PipelineBindPoint::eGraphics,
+          graphicsPipeline.getVkPipelineLayout(),
+          0,
+          1,
+          &vkSet,
+          0,
+          nullptr);
 
-      // At the end of "rendering", we are required to change how the pixels of the
-      // swpchain image are laid out in memory to something that is appropriate
-      // for presenting to the window (while preserving the content of the pixels!).
+        pushConstants.resolution = resolution;
+        pushConstants.mouse = osWindow->mouse.freePos;
+        pushConstants.time = windowing.getTime();
+
+        currentCmdBuf.pushConstants(
+          graphicsPipeline.getVkPipelineLayout(),
+          vk::ShaderStageFlagBits::eFragment,
+          0,
+          sizeof(pushConstants),
+          &pushConstants);
+
+        currentCmdBuf.draw(3, 1, 0, 0);
+      };
     }
+
     etna::set_state(
         currentCmdBuf,
         backbuffer,

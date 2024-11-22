@@ -9,7 +9,6 @@
 #include "etna/GraphicsPipeline.hpp"
 #include "wsi/OsWindowingManager.hpp"
 
-
 class App
 {
 public:
@@ -20,6 +19,7 @@ public:
 
 private:
   void drawFrame();
+  void createCheckerImage();
 
 private:
   OsWindowingManager windowing;
@@ -30,8 +30,11 @@ private:
 
   std::unique_ptr<etna::Window> vkWindow;
   std::unique_ptr<etna::PerFrameCmdMgr> commandManager;
-  etna::Image image;
+  etna::Image proceduralImage;
+  etna::Image checkerImage;
   etna::Sampler defaultSampler;
+  etna::Sampler checkerSampler;
   // etna::ComputePipeline pipeline;
   etna::GraphicsPipeline graphicsPipeline;
+  etna::GraphicsPipeline proceduralPipeline;
 };
