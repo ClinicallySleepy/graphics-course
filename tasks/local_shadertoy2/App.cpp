@@ -1,14 +1,16 @@
 #include "App.hpp"
 
 #include <cstdint>
+#include <cstring>
 #include <etna/Etna.hpp>
 #include <etna/GlobalContext.hpp>
 #include <etna/PipelineManager.hpp>
 #include <etna/RenderTargetStates.hpp>
-#include <stdexcept>
+#include <iostream>
+#include <ostream>
+#include <vulkan/vulkan_format_traits.hpp>
 #include <vulkan/vulkan_structs.hpp>
 #include "etna/Image.hpp"
-#include <chrono>
 #include <GLFW/glfw3.h>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -19,6 +21,11 @@ struct PushConstants {
   glm::vec2 mouse;
   float time;
 } pushConstants;
+
+struct PushConstantsProcedural {
+  glm::vec2 resolution;
+  float time;
+} pushConstantsProcedural;
 
 App::App()
   : resolution{1280, 720}
@@ -44,7 +51,7 @@ App::App()
     // Etna does all of the Vulkan initialization heavy lifting.
     // You can skip figuring out how it works for now.
     etna::initialize(etna::InitParams{
-      .applicationName = "Local Shadertoy",
+      .applicationName = "LocalShadertoy",
       .applicationVersion = VK_MAKE_VERSION(0, 1, 0),
       .instanceExtensions = instanceExtensions,
       .deviceExtensions = deviceExtensions,
@@ -128,8 +135,13 @@ App::App()
     .addressMode = vk::SamplerAddressMode::eRepeat,
     .name = "default_sampler",
   });
+  skyboxSampler = etna::Sampler(etna::Sampler::CreateInfo{
+    .filter = vk::Filter::eLinear,
+    .name = "skybox_sampler",
+  });
 
   createCheckerImage();
+  createSkyboxImage();
 }
 
 App::~App()
@@ -166,6 +178,91 @@ void App::createCheckerImage() {
   };
 
   checkerImage = etna::create_image_from_bytes(imageInfo, commandBuffer, imageData);
+  stbi_image_free(imageData);
+}
+
+void App::createSkyboxImage() {
+  auto commandBuffer = commandManager->acquireNext();
+  int width, height;
+  stbi_uc* imagesData[6];
+
+  for (int i = 0; i < 6; ++i) {
+    std::string filepath = std::format("../resources/textures/shadertoy_skybox{}.jpg", i);
+
+    imagesData[i] = stbi_load(filepath.c_str(), &width, &height, nullptr, 4);
+    ETNA_VERIFY(imagesData[i]);
+  }
+
+  auto imageInfo = etna::Image::CreateInfo{
+    .extent = vk::Extent3D{static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1},
+    .name = "cubemap_image",
+    .format = vk::Format::eB8G8R8A8Srgb,
+    .imageUsage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst,
+    .layers = 6,
+    .mipLevels = 1,
+    .flags = vk::ImageCreateFlagBits::eCubeCompatible,
+  };
+  const auto blockSize = vk::blockSize(imageInfo.format);
+  const auto layerSize = blockSize * imageInfo.extent.width * imageInfo.extent.height * imageInfo.extent.depth;
+  const auto imageSize = layerSize * imageInfo.layers;
+  etna::Buffer stagingBuf = etna::get_context().createBuffer(etna::Buffer::CreateInfo{
+    .size = imageSize,
+    .bufferUsage = vk::BufferUsageFlagBits::eTransferSrc,
+    .memoryUsage = VMA_MEMORY_USAGE_CPU_ONLY,
+    .name = "temporary_buffer",
+  });
+
+  auto* mappedMem = stagingBuf.map();
+  // std::memcpy(mappedMem, imagesData, imageSize);
+  for (int i = 0; i < 6; ++i) {
+    std::memcpy(mappedMem + (layerSize * i), imagesData[i], layerSize);
+    // stbi_image_free(imagesData[i]);
+  }
+  stagingBuf.unmap();
+
+  ETNA_CHECK_VK_RESULT(commandBuffer.begin(vk::CommandBufferBeginInfo{
+    .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
+  }));
+
+  skyboxImage = etna::get_context().createImage(imageInfo);
+  etna::set_state(
+      commandBuffer,
+      skyboxImage.get(),
+      vk::PipelineStageFlagBits2::eTransfer,
+      vk::AccessFlagBits2::eTransferWrite,
+      vk::ImageLayout::eTransferDstOptimal,
+      skyboxImage.getAspectMaskByFormat());
+  etna::flush_barriers(commandBuffer);
+
+  vk::BufferImageCopy region{
+    .bufferOffset = 0,
+      .bufferRowLength = 0,
+      .bufferImageHeight = 0,
+      .imageSubresource =
+        vk::ImageSubresourceLayers{
+          .aspectMask = skyboxImage.getAspectMaskByFormat(),
+          .mipLevel = 0,
+          .baseArrayLayer = 0,
+          .layerCount = static_cast<std::uint32_t>(imageInfo.layers),
+        },
+      .imageOffset = {0, 0, 0},
+      .imageExtent = imageInfo.extent,
+  };
+
+  commandBuffer.copyBufferToImage(
+      stagingBuf.get(), skyboxImage.get(), vk::ImageLayout::eTransferDstOptimal, 1, &region);
+
+  ETNA_CHECK_VK_RESULT(commandBuffer.end());
+
+  vk::SubmitInfo submitInfo{
+    .commandBufferCount = 1,
+      .pCommandBuffers = &commandBuffer,
+  };
+
+  ETNA_CHECK_VK_RESULT(etna::get_context().getQueue().submit(1, &submitInfo, {}));
+  ETNA_CHECK_VK_RESULT(etna::get_context().getQueue().waitIdle());
+
+  stagingBuf.reset();
 }
 
 void App::drawFrame()
@@ -203,8 +300,17 @@ void App::drawFrame()
           {{proceduralImage.get(), proceduralImage.getView({})}},
           {}
         };
-
         currentCmdBuf.bindPipeline(vk::PipelineBindPoint::eGraphics, proceduralPipeline.getVkPipeline());
+        pushConstantsProcedural.resolution = resolution;
+        pushConstantsProcedural.time = windowing.getTime();
+
+        currentCmdBuf.pushConstants(
+          proceduralPipeline.getVkPipelineLayout(),
+          vk::ShaderStageFlagBits::eFragment,
+          0,
+          sizeof(pushConstantsProcedural),
+          &pushConstantsProcedural);
+
         currentCmdBuf.draw(3, 1, 0, 0);
       };
 
@@ -248,6 +354,9 @@ void App::drawFrame()
           {
             etna::Binding{0, proceduralImage.genBinding(defaultSampler.get(), vk::ImageLayout::eShaderReadOnlyOptimal)},
             etna::Binding{1, checkerImage.genBinding(checkerSampler.get(), vk::ImageLayout::eShaderReadOnlyOptimal)},
+            etna::Binding{2, skyboxImage.genBinding(skyboxSampler.get(), vk::ImageLayout::eShaderReadOnlyOptimal, etna::Image::ViewParams({
+                  .type = vk::ImageViewType::eCube,
+                  }))},
           });
 
         vk::DescriptorSet vkSet = set.getVkSet();

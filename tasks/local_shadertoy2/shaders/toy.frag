@@ -4,6 +4,7 @@
 layout(location = 0) out vec4 color;
 layout(binding = 0) uniform sampler2D proceduralTexture;
 layout(binding = 1) uniform sampler2D checkerTexture;
+layout (binding = 2) uniform samplerCube cubeMapTexture;
 layout(push_constant) uniform PushConstants {
     vec2 resolution;
     vec2 mouse;
@@ -148,6 +149,7 @@ vec3 raymarch(vec3 from, vec3 direction, out bool hit, out int object) {
     float pathChange = 0.;
     float pathTotal = 0.;
     vec3 point = from;
+    hit = false;
 
     for (int steps = 0; pathTotal < maxPath; ++steps) {
         pathChange = sdf(point, object);
@@ -203,12 +205,15 @@ void main()
 {
     vec2 mouse = pc.mouse.xy / pc.resolution.xy * 0.6 + 0.4;
     vec2 scale = pc.resolution.xy / max(pc.resolution.x, pc.resolution.y);
-    vec2 uv = (gl_FragCoord.xy / pc.resolution - vec2(0.5)) * scale;
+    // vec2 uv = (gl_FragCoord.xy / pc.resolution - vec2(0.5)) * scale;
+
+vec2 uv = vec2(gl_FragCoord.x, pc.resolution.y - gl_FragCoord.y) / pc.resolution - vec2(0.5);
+uv *= scale;
 
     bool hit = false;
     int object;
 
-    vec3 cameraPosition = vec3(0., 0., 6.)  * rotateX(-mouse.y*3. - PI/2.) * rotateY(-mouse.x*5.);
+    vec3 cameraPosition = vec3(0., 0., 6.) * rotateX(-mouse.y*3. - PI/2.) * rotateY(-mouse.x*5.);
     vec3 pointOfInterest = vec3(0., 0., 0.);
     vec3 cameraDirection = pointOfInterest - cameraPosition;
 
@@ -220,7 +225,6 @@ void main()
     vec3 rayDirection = normalize(uv.x * right + uv.y * up + focalLength * forward);
     vec3 intersectionPoint = raymarch(cameraPosition, rayDirection, hit, object);
     vec3 lightSource = vec3(5., -5., 5.);
-
 
     if (hit) {
         float ambientLight = 0.3;
@@ -246,6 +250,7 @@ void main()
         bool shadow = false;
         vec3 shadowRayDirection = normalize(lightSource - intersectionPoint);
         vec3 shadowPoint = raymarch(intersectionPoint + shadowRayDirection * 0.1, shadowRayDirection, shadow);
+        shadow = shadow && sdf(shadowPoint) < 0.1;
 
         if (object == 2) {
             bool reflection = false;
@@ -256,7 +261,7 @@ void main()
             vec3 reflectedPoint = raymarch(intersectionPoint + reflectionRayDirection * 0.1, reflectionRayDirection, reflection, anotherObject);
             vec3 reflectedLightVector = normalize(lightSource - reflectedPoint);
             vec3 reflectedSurfaceNormal = generateNormal(reflectedPoint);
-            float reflectedDiffuseLight = max( 0.01, dot(reflectedSurfaceNormal, reflectedLightVector)); 
+            float reflectedDiffuseLight = max(0.01, dot(reflectedSurfaceNormal, reflectedLightVector)); 
             vec3 reflectedViewVector = normalize(cameraPosition - reflectedPoint);
             vec3 reflectedHalfwayVector = normalize(reflectedLightVector + reflectedViewVector);
             float reflectedSpecularLight = pow(max(dot(reflectedSurfaceNormal, reflectedHalfwayVector), 0.0), 50.);
@@ -271,6 +276,7 @@ void main()
                 bool shadow = false;
                 vec3 shadowRayDirection = normalize(lightSource - reflectedPoint);
                 vec3 shadowPoint = raymarch(reflectedPoint + shadowRayDirection * 1., shadowRayDirection, shadow);
+                shadow = shadow && sdf(shadowPoint) < 0.1;
 
                 objectColor = objectColor * (reflectedAmbientLight + reflectedDiffuseLight + specularLight);
                 color = objectColor * (ambientLight + diffuseLight);
@@ -281,13 +287,11 @@ void main()
                 }
             }
             else {
-                // color = texture(iChannel3, -normalize(reflectionRayDirection));
-                color = vec4(0.5, 0.0, 0.5, 1.);
+                color = texture(cubeMapTexture, -normalize(reflectionRayDirection));
             }
             if (shadow && dot(surfaceNormal, lightVector) > 0.2) {
                 color *= 0.2;
             }
-
         }
         else {
             if (shadow && dot(surfaceNormal, lightVector) > 0.2) {
@@ -301,8 +305,6 @@ void main()
     }
     else {
         vec3 col = 0.5 + 0.5*cos(pc.time+uv.xyx+vec3(0,2,4));
-        color = vec4(col,1.0);
-        // color = texture(iChannel3, -normalize(uv.x * right + uv.y * up + 1. * forward));
-        color = vec4(0., 0., 1., 1.);
+        color = texture(cubeMapTexture, -normalize(uv.x * right + uv.y * up + 1. * forward));
     }
 }

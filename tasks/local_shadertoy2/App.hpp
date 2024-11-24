@@ -20,6 +20,7 @@ public:
 private:
   void drawFrame();
   void createCheckerImage();
+  void createSkyboxImage();
 
 private:
   OsWindowingManager windowing;
@@ -32,8 +33,10 @@ private:
   std::unique_ptr<etna::PerFrameCmdMgr> commandManager;
   etna::Image proceduralImage;
   etna::Image checkerImage;
+  etna::Image skyboxImage;
   etna::Sampler defaultSampler;
   etna::Sampler checkerSampler;
+  etna::Sampler skyboxSampler;
   // etna::ComputePipeline pipeline;
   etna::GraphicsPipeline graphicsPipeline;
   etna::GraphicsPipeline proceduralPipeline;
