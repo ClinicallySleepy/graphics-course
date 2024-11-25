@@ -21,6 +21,7 @@ private:
   void drawFrame();
   void createCheckerImage();
   void createSkyboxImage();
+  void addMipLevels(etna::Image& image, vk::CommandBuffer& commandBuffer, size_t mipLevels, int width, int height, uint32_t layerCount = 1);
 
 private:
   OsWindowingManager windowing;

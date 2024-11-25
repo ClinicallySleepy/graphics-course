@@ -142,7 +142,7 @@ float sdf(vec3 point) {
 }
 
 vec3 raymarch(vec3 from, vec3 direction, out bool hit, out int object) {
-    const int maxSteps = 90;
+    const int maxSteps = 100;
     const float maxPath = 100.0;
     const float epsilon = 0.001;
 
@@ -186,7 +186,7 @@ vec3 generateNormal(vec3 point) {
 
 vec4 planeColor(vec3 normal, vec3 point) {
     float multiplier = 0.1;
-    return vec4(vec3(-normal.y * texture(checkerTexture, (point.xz * multiplier)).r * 0.5 + 0.5), 1.0);
+    return vec4(vec3(-normal.y * texture(checkerTexture, (point.xz * multiplier)).r * 0.7 + 0.3), 1.0);
 }
 
 vec4 boxTexture(vec3 normal, vec3 point) {
@@ -224,7 +224,7 @@ void main()
 
     vec3 rayDirection = normalize(uv.x * right + uv.y * up + focalLength * forward);
     vec3 intersectionPoint = raymarch(cameraPosition, rayDirection, hit, object);
-    vec3 lightSource = vec3(5., -5., -1.) * 500.;
+    vec3 lightSource = vec3(5., -5., -1.) * 5.;
 
     if (hit) {
         float ambientLight = 0.1;
