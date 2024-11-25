@@ -207,8 +207,8 @@ void main()
     vec2 scale = pc.resolution.xy / max(pc.resolution.x, pc.resolution.y);
     // vec2 uv = (gl_FragCoord.xy / pc.resolution - vec2(0.5)) * scale;
 
-vec2 uv = vec2(gl_FragCoord.x, pc.resolution.y - gl_FragCoord.y) / pc.resolution - vec2(0.5);
-uv *= scale;
+    vec2 uv = vec2(gl_FragCoord.x, pc.resolution.y - gl_FragCoord.y) / pc.resolution - vec2(0.5);
+    uv *= scale;
 
     bool hit = false;
     int object;
@@ -224,14 +224,14 @@ uv *= scale;
 
     vec3 rayDirection = normalize(uv.x * right + uv.y * up + focalLength * forward);
     vec3 intersectionPoint = raymarch(cameraPosition, rayDirection, hit, object);
-    vec3 lightSource = vec3(5., -5., 5.);
+    vec3 lightSource = vec3(5., -5., -1.) * 500.;
 
     if (hit) {
-        float ambientLight = 0.3;
+        float ambientLight = 0.1;
 
         vec3 lightVector = normalize(lightSource - intersectionPoint);
         vec3 surfaceNormal = generateNormal(intersectionPoint);
-        float diffuseLight = max( 0.01, dot(surfaceNormal, lightVector)); 
+        float diffuseLight = max(0.0, dot(surfaceNormal, lightVector)); 
 
         vec4[3] objectColors = (vec4[](
             boxTexture(surfaceNormal, intersectionPoint),
@@ -250,18 +250,18 @@ uv *= scale;
         bool shadow = false;
         vec3 shadowRayDirection = normalize(lightSource - intersectionPoint);
         vec3 shadowPoint = raymarch(intersectionPoint + shadowRayDirection * 0.1, shadowRayDirection, shadow);
-        shadow = shadow && sdf(shadowPoint) < 0.1;
 
         if (object == 2) {
             bool reflection = false;
             float reflectedAmbientLight = 0.2;
             int anotherObject;
+            diffuseLight = diffuseLight + 0.2;
 
             vec3 reflectionRayDirection = rayDirection - 2.0 * dot(surfaceNormal, rayDirection) * surfaceNormal;
             vec3 reflectedPoint = raymarch(intersectionPoint + reflectionRayDirection * 0.1, reflectionRayDirection, reflection, anotherObject);
             vec3 reflectedLightVector = normalize(lightSource - reflectedPoint);
             vec3 reflectedSurfaceNormal = generateNormal(reflectedPoint);
-            float reflectedDiffuseLight = max(0.01, dot(reflectedSurfaceNormal, reflectedLightVector)); 
+            float reflectedDiffuseLight = max(0.0, dot(reflectedSurfaceNormal, reflectedLightVector)); 
             vec3 reflectedViewVector = normalize(cameraPosition - reflectedPoint);
             vec3 reflectedHalfwayVector = normalize(reflectedLightVector + reflectedViewVector);
             float reflectedSpecularLight = pow(max(dot(reflectedSurfaceNormal, reflectedHalfwayVector), 0.0), 50.);
@@ -276,21 +276,22 @@ uv *= scale;
                 bool shadow = false;
                 vec3 shadowRayDirection = normalize(lightSource - reflectedPoint);
                 vec3 shadowPoint = raymarch(reflectedPoint + shadowRayDirection * 1., shadowRayDirection, shadow);
-                shadow = shadow && sdf(shadowPoint) < 0.1;
 
-                objectColor = objectColor * (reflectedAmbientLight + reflectedDiffuseLight + specularLight);
+                objectColor = objectColor * (reflectedAmbientLight + reflectedDiffuseLight + reflectedSpecularLight);
                 color = objectColor * (ambientLight + diffuseLight);
-                //color = objectColor;
 
                 if (shadow && dot(reflectedSurfaceNormal, lightVector) > 0.2) {
                     color *= 0.2;
                 }
             }
             else {
-                color = texture(cubeMapTexture, -normalize(reflectionRayDirection));
+                color = texture(cubeMapTexture, -normalize(reflectionRayDirection)) * (ambientLight + diffuseLight);
             }
             if (shadow && dot(surfaceNormal, lightVector) > 0.2) {
                 color *= 0.2;
+            }
+            else {
+                color = color + specularLight * vec4(1., 1., 1., 1.);
             }
         }
         else {
