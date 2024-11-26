@@ -170,7 +170,9 @@ void App::drawFrame()
 
       etna::flush_barriers(currentCmdBuf);
 
-      currentCmdBuf.dispatch(64, 64, 1);
+      // in shader we use 32x32 threads to cover 32x32 pixels
+      // here we specify precise number of workgroups to fully cover our image
+      currentCmdBuf.dispatch((resolution.x + 31) / 32, (resolution.y + 31) / 32, 1);
 
       etna::set_state(
         currentCmdBuf,
@@ -179,14 +181,6 @@ void App::drawFrame()
         vk::AccessFlagBits2::eTransferRead,
         vk::ImageLayout::eTransferSrcOptimal,
         image.getAspectMaskByFormat());
-
-      etna::set_state(
-          currentCmdBuf,
-          backbuffer,
-          vk::PipelineStageFlagBits2::eTransfer,
-          vk::AccessFlagBits2::eTransferWrite,
-          vk::ImageLayout::eTransferDstOptimal,
-          vk::ImageAspectFlagBits::eColor);
 
       etna::flush_barriers(currentCmdBuf);
 
