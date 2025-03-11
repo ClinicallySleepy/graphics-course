@@ -1,5 +1,6 @@
 #include "App.hpp"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -7,32 +8,24 @@
 #include <etna/GlobalContext.hpp>
 #include <etna/PipelineManager.hpp>
 #include <etna/RenderTargetStates.hpp>
+#include <thread>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_enums.hpp>
 #include <vulkan/vulkan_format_traits.hpp>
 #include <vulkan/vulkan_handles.hpp>
 #include <vulkan/vulkan_structs.hpp>
+#include "etna/Buffer.hpp"
 #include "etna/Image.hpp"
+#include "etna/Profiling.hpp"
 #include "spdlog/spdlog.h"
 #include <GLFW/glfw3.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-struct PushConstants {
-  glm::vec2 resolution;
-  glm::vec2 mouse;
-  float time;
-} pushConstants;
-
-struct PushConstantsProcedural {
-  glm::vec2 resolution;
-  float time;
-} pushConstantsProcedural;
-
 App::App()
   : resolution{1280, 720}
-  , useVsync{true}
+  , useVsync{false}
 {
   // First, we need to initialize Vulkan, which is not trivial because
   // extensions are required for just about anything.
@@ -60,7 +53,7 @@ App::App()
       .deviceExtensions = deviceExtensions,
       // Replace with an index if etna detects your preferred GPU incorrectly
       // .physicalDeviceIndexOverride = 1,
-      .numFramesInFlight = 1,
+      .numFramesInFlight = 2,
     });
   }
 
@@ -143,6 +136,22 @@ App::App()
     .name = "skybox_sampler",
   });
 
+  constants[0] = etna::get_context().createBuffer(etna::Buffer::CreateInfo{
+    .size = sizeof(UniformParams),
+    .bufferUsage = vk::BufferUsageFlagBits::eUniformBuffer,
+    .memoryUsage = VMA_MEMORY_USAGE_CPU_ONLY,
+    .name = "constants0",
+  });
+  constants[0].map();
+
+  constants[1] = etna::get_context().createBuffer(etna::Buffer::CreateInfo{
+    .size = sizeof(UniformParams),
+    .bufferUsage = vk::BufferUsageFlagBits::eUniformBuffer,
+    .memoryUsage = VMA_MEMORY_USAGE_CPU_ONLY,
+    .name = "constants1",
+  });
+  constants[1].map();
+
   createCheckerImage();
   createSkyboxImage();
 }
@@ -158,7 +167,17 @@ void App::run()
   {
     windowing.poll();
 
+    frameCounter = (frameCounter + 1) % 2;
+    {
+      uniformParams.resolution = resolution;
+      uniformParams.mouse = osWindow->mouse.freePos;
+      uniformParams.time = windowing.getTime();
+
+      std::memcpy(constants[frameCounter].data(), &uniformParams, sizeof(uniformParams));
+    };
+
     drawFrame();
+    FrameMark;
   }
 
   // We need to wait for the GPU to execute the last frame before destroying
@@ -256,7 +275,7 @@ void App::addMipLevels(etna::Image& image, vk::CommandBuffer& command_buffer, si
     command_buffer.pipelineBarrier2(depInfo);
     etna::flush_barriers(command_buffer);
   }
-  
+  std::this_thread::sleep_for(std::chrono::milliseconds(13));
   ETNA_CHECK_VK_RESULT(command_buffer.end());
 
   vk::SubmitInfo submitInfo{
@@ -376,9 +395,9 @@ void App::createSkyboxImage() {
 
 void App::drawFrame()
 {
+  ZoneScoped;
   // First, get a command buffer to write GPU commands into.
   auto currentCmdBuf = commandManager->acquireNext();
-
   // Next, tell Etna that we are going to start processing the next frame.
   etna::begin_frame();
 
@@ -393,39 +412,53 @@ void App::drawFrame()
 
     ETNA_CHECK_VK_RESULT(currentCmdBuf.begin(vk::CommandBufferBeginInfo{}));
     {
-      etna::set_state(
-        currentCmdBuf,
-        proceduralImage.get(),
-        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
-        vk::AccessFlagBits2::eColorAttachmentWrite,
-        vk::ImageLayout::eColorAttachmentOptimal,
-        vk::ImageAspectFlagBits::eColor);
-      etna::flush_barriers(currentCmdBuf);
+      etna::Buffer &currentConstants = constants[frameCounter];
 
+      ETNA_PROFILE_GPU(currentCmdBuf, renderFrame);
       {
+        // ETNA_PROFILE_GPU(currentCmdBuf, renderFrame);
+        etna::set_state(
+            currentCmdBuf,
+            proceduralImage.get(),
+            vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+            vk::AccessFlagBits2::eColorAttachmentWrite,
+            vk::ImageLayout::eColorAttachmentOptimal,
+            vk::ImageAspectFlagBits::eColor);
+        etna::flush_barriers(currentCmdBuf);
+
+        auto graphicsInfo = etna::get_shader_program("toy_procedural");
+        auto set = etna::create_descriptor_set(
+          graphicsInfo.getDescriptorLayoutId(0),
+          currentCmdBuf,
+          {
+            etna::Binding{0, currentConstants.genBinding()},
+          });
+
         etna::RenderTargetState state{
           currentCmdBuf,
           vk::Rect2D{{0, 0}, { resolution.x, resolution.y }},
           {{proceduralImage.get(), proceduralImage.getView({})}},
           {}
         };
-        currentCmdBuf.bindPipeline(vk::PipelineBindPoint::eGraphics, proceduralPipeline.getVkPipeline());
-        pushConstantsProcedural.resolution = resolution;
-        pushConstantsProcedural.time = windowing.getTime();
+        vk::DescriptorSet vkSet = set.getVkSet();
 
-        currentCmdBuf.pushConstants(
-          proceduralPipeline.getVkPipelineLayout(),
-          vk::ShaderStageFlagBits::eFragment,
+        currentCmdBuf.bindPipeline(vk::PipelineBindPoint::eGraphics, proceduralPipeline.getVkPipeline());
+        currentCmdBuf.bindDescriptorSets(
+          vk::PipelineBindPoint::eGraphics,
+          graphicsPipeline.getVkPipelineLayout(),
           0,
-          sizeof(pushConstantsProcedural),
-          &pushConstantsProcedural);
+          1,
+          &vkSet,
+          0,
+          nullptr);
 
         currentCmdBuf.draw(3, 1, 0, 0);
       };
 
       {
-        auto graphicsInfo = etna::get_shader_program("toy_fragment");
+        // ETNA_PROFILE_GPU(currentCmdBuf, renderFrame);
 
+        auto graphicsInfo = etna::get_shader_program("toy_fragment");
         auto set = etna::create_descriptor_set(
           graphicsInfo.getDescriptorLayoutId(0),
           currentCmdBuf,
@@ -436,6 +469,7 @@ void App::drawFrame()
               .baseMip = 1,
               .type = vk::ImageViewType::eCube,
             }))},
+            etna::Binding{3, currentConstants.genBinding()},
           });
 
         etna::RenderTargetState state{currentCmdBuf,
@@ -458,23 +492,13 @@ void App::drawFrame()
           0,
           nullptr);
 
-        pushConstants.resolution = resolution;
-        pushConstants.mouse = osWindow->mouse.freePos;
-        pushConstants.time = windowing.getTime();
-
-        currentCmdBuf.pushConstants(
-          graphicsPipeline.getVkPipelineLayout(),
-          vk::ShaderStageFlagBits::eFragment,
-          0,
-          sizeof(pushConstants),
-          &pushConstants);
-
         currentCmdBuf.draw(3, 1, 0, 0);
       };
     }
 
     // And of course flush the layout transition.
     etna::flush_barriers(currentCmdBuf);
+    ETNA_READ_BACK_GPU_PROFILING(currentCmdBuf);
 
     ETNA_CHECK_VK_RESULT(currentCmdBuf.end());
 

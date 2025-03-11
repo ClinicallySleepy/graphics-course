@@ -1,15 +1,19 @@
 #version 430
 #define PI 3.1415
+#extension GL_ARB_separate_shader_objects : enable
+#extension GL_GOOGLE_include_directive : require
+
+#include "UniformParams.h"
 
 layout(location = 0) out vec4 color;
 layout(binding = 0) uniform sampler2D proceduralTexture;
 layout(binding = 1) uniform sampler2D checkerTexture;
 layout (binding = 2) uniform samplerCube cubeMapTexture;
-layout(push_constant) uniform PushConstants {
-    vec2 resolution;
-    vec2 mouse;
-    float time;
-} pc;
+layout(binding = 3, set = 0) uniform AppData
+{
+  UniformParams params;
+};
+
 
 mat3 rotateX(float theta) {
     float c = cos(theta);
@@ -85,42 +89,42 @@ int minIndex(float x, float y) {
 
 float sdf(vec3 point, out int object) {
     //return plane(point + vec3(0., -2.1, 0.), vec3(0., -1., 0.));
-    float angleZW = pc.time * 0.6;
+    float angleZW = params.time * 0.6;
     mat4x4 rotationZW = mat4x4(
         cos(angleZW), -sin(angleZW), 0., 0.,
         sin(angleZW), cos(angleZW), 0., 0.,
         0., 0., 1., 0.,
         0., 0., 0., 1.
     );
-    float angleXY = pc.time * 0.5;
+    float angleXY = params.time * 0.5;
     mat4x4 rotationXY = mat4x4(
         1., 0., 0., 0.,
         0., 1., 0., 0.,
         0., 0., cos(angleXY), -sin(angleXY),
         0., 0., sin(angleXY), cos(angleXY)
     );
-    float angleXW = pc.time * 0.3;
+    float angleXW = params.time * 0.3;
     mat4x4 rotationXW = mat4x4(
         1., 0., 0., 0.,
         0., cos(angleXW), -sin(angleXW), 0.,
         0., sin(angleXW), cos(angleXW), 0.,
         0., 0., 0., 1.
     );
-    float angleYZ = pc.time * 0.4;
+    float angleYZ = params.time * 0.4;
     mat4x4 rotationYZ = mat4x4(
         cos(angleYZ), 0., 0., -sin(angleYZ),
         0., 1., 0., 0.,
         0., 0., 1., 0.,
         sin(angleYZ), 0., 0., cos(angleYZ)
     );
-    float angleYW = pc.time * 0.2;
+    float angleYW = params.time * 0.2;
     mat4x4 rotationYW = mat4x4(
         cos(angleYW), 0., -sin(angleYW), 0.,
         0., 1., 0., 0.,
         sin(angleYW), 0., cos(angleYW), 0.,
         0., 0., 0., 1.
     );
-    float angleXZ = pc.time * 0.5;
+    float angleXZ = params.time * 0.5;
     mat4x4 rotationXZ = mat4x4(
         1., 0., 0., 0.,
         0., cos(angleXZ), 0., -sin(angleXZ),
@@ -128,8 +132,8 @@ float sdf(vec3 point, out int object) {
         0., sin(angleXZ), 0., cos(angleXZ)
     );
 
-    float sphereValue = sphere(point + vec3(1. * sin(pc.time), 0.5 * sin(pc.time * 5.), 1. * cos(pc.time)), 0.3);
-    float box4dValue = box4d(vec4(point, 0.4 * sin(pc.time * 0.3)) * rotationXY * rotationZW * rotationXW * rotationYZ * rotationYW * rotationXZ + vec4(0., 0., 0., 0.), vec4(0.1, 0.1, 0.1, 0.1) * (4. + 1. * sin(pc.time / 4.)));
+    float sphereValue = sphere(point + vec3(1. * sin(params.time), 0.5 * sin(params.time * 5.), 1. * cos(params.time)), 0.3);
+    float box4dValue = box4d(vec4(point, 0.4 * sin(params.time * 0.3)) * rotationXY * rotationZW * rotationXW * rotationYZ * rotationYW * rotationXZ + vec4(0., 0., 0., 0.), vec4(0.1, 0.1, 0.1, 0.1) * (4. + 1. * sin(params.time / 4.)));
     float planeValue = plane(point + vec3(0., -2.1, 0.), vec3(0., -1., 0.));
     object = minIndex(box4dValue, planeValue, sphereValue);
     return min(min(box4dValue - 0.03, planeValue), sphereValue);
@@ -142,8 +146,8 @@ float sdf(vec3 point) {
 }
 
 vec3 raymarch(vec3 from, vec3 direction, out bool hit, out int object) {
-    const int maxSteps = 100;
-    const float maxPath = 100.0;
+    const int maxSteps = 15000;
+    const float maxPath = 15000.0;
     const float epsilon = 0.001;
 
     float pathChange = 0.;
@@ -203,11 +207,11 @@ vec4 boxTexture(vec3 normal, vec3 point) {
 
 void main()
 {
-    vec2 mouse = pc.mouse.xy / pc.resolution.xy * 0.6 + 0.4;
-    vec2 scale = pc.resolution.xy / max(pc.resolution.x, pc.resolution.y);
-    // vec2 uv = (gl_FragCoord.xy / pc.resolution - vec2(0.5)) * scale;
+    vec2 mouse = params.mouse.xy / params.resolution.xy * 0.6 + 0.4;
+    vec2 scale = params.resolution.xy / max(params.resolution.x, params.resolution.y);
+    // vec2 uv = (gl_FragCoord.xy / params.resolution - vec2(0.5)) * scale;
 
-    vec2 uv = vec2(gl_FragCoord.x, pc.resolution.y - gl_FragCoord.y) / pc.resolution - vec2(0.5);
+    vec2 uv = vec2(gl_FragCoord.x, params.resolution.y - gl_FragCoord.y) / params.resolution - vec2(0.5);
     uv *= scale;
 
     bool hit = false;
@@ -305,7 +309,7 @@ void main()
 
     }
     else {
-        vec3 col = 0.5 + 0.5*cos(pc.time+uv.xyx+vec3(0,2,4));
+        vec3 col = 0.5 + 0.5*cos(params.time+uv.xyx+vec3(0,2,4));
         color = texture(cubeMapTexture, -normalize(uv.x * right + uv.y * up + 1. * forward));
     }
 }
