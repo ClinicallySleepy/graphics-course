@@ -39,7 +39,7 @@ void Baker::bakeScene(std::filesystem::path& path)
   updateBufferViews(model, result);
   updateAccessors(model, result);
 
-  std::string output = path.parent_path() / (path.stem().string() + "_baked.gltf");
+  std::string output = path.parent_path().string() + "/" + path.stem().string() + "_baked.gltf";
   spdlog::info("Writing to {}", output);
   tinygltf::TinyGLTF loader;
   loader.SetImagesAsIs(true);
