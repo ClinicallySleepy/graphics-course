@@ -6,14 +6,6 @@
 #include <tiny_gltf.h>
 #include <glm/glm.hpp>
 
-// struct Vertex {
-//     float pos[3];
-//     uint8_t normal[3];
-//     uint8_t padding1;
-//     float texcoord[2];
-//     uint8_t tangent[3];
-//     uint8_t padding2[5];
-// };
 struct Vertex
 {
     // First 3 floats are position, 4th float is a packed normal

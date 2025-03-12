@@ -14,9 +14,9 @@
 static std::uint32_t encode_normal(glm::vec4 normal)
 {
   const std::int8_t x = static_cast<std::int8_t>(std::round(255 * 0.5f * (normal.x + 1.0f)));
-  const std::int8_t y = static_cast<std::int8_t>(std::round(255 * 0.5f * (normal.x + 1.0f)));
-  const std::int8_t z = static_cast<std::int8_t>(std::round(255 * 0.5f * (normal.x + 1.0f)));
-  const std::int8_t w = static_cast<std::int8_t>(std::round(255 * 0.5f * (normal.x + 1.0f)));
+  const std::int8_t y = static_cast<std::int8_t>(std::round(255 * 0.5f * (normal.y + 1.0f)));
+  const std::int8_t z = static_cast<std::int8_t>(std::round(255 * 0.5f * (normal.z + 1.0f)));
+  const std::int8_t w = static_cast<std::int8_t>(std::round(255 * 0.5f * (normal.w + 1.0f)));
   const int8_t combined[4] = { x, y, z, w };
 
   return std::bit_cast<uint32_t>(combined);

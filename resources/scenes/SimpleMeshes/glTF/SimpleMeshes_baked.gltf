@@ -8,6 +8,12 @@
     },
     {
       "bufferView": 1,
+      "componentType": 5126,
+      "count": 3,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
       "byteOffset": 24,
       "componentType": 5120,
       "count": 3,
@@ -52,7 +58,7 @@
       "primitives": [
         {
           "attributes": {
-            "NORMAL": 1,
+            "NORMAL": 2,
             "POSITION": 1
           },
           "indices": 0,
