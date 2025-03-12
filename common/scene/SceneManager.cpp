@@ -151,8 +151,8 @@ SceneManager::ProcessedMeshes SceneManager::processBakedMeshes(const tinygltf::M
   ProcessedMeshes result;
 
   {
-    result.indices.reserve(model.bufferViews[0].byteLength);
-    result.vertices.reserve(model.bufferViews[1].byteLength);
+    result.indices.resize(model.bufferViews[0].byteLength);
+    result.vertices.resize(model.bufferViews[1].byteLength);
 
     std::memcpy(result.indices.data() , model.buffers[0].data.data(), model.bufferViews[0].byteLength);
     std::memcpy(result.vertices.data(), model.buffers[1].data.data() + model.bufferViews[1].byteOffset, model.bufferViews[1].byteLength);
@@ -438,7 +438,9 @@ void SceneManager::selectBakedScene(std::filesystem::path path)
   instanceMatrices = std::move(instMats);
   instanceMeshes = std::move(instMeshes);
 
+  spdlog::info("Start processing meshes");
   auto [verts, inds, relems, meshs] = processBakedMeshes(model);
+  spdlog::info("Finish processing meshes");
 
   renderElements = std::move(relems);
   meshes = std::move(meshs);
