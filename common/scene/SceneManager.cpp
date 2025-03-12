@@ -1,5 +1,6 @@
 #include "SceneManager.hpp"
 
+#include <cstdint>
 #include <stack>
 
 #include <spdlog/spdlog.h>
@@ -144,6 +145,61 @@ static std::uint32_t encode_normal(glm::vec3 normal)
 
   return sx | sy;
 }
+
+SceneManager::ProcessedMeshes SceneManager::processBakedMeshes(const tinygltf::Model& model) const
+{
+  ProcessedMeshes result;
+
+  {
+    result.indices.resize(model.bufferViews[0].byteLength / sizeof(uint32_t));
+    result.vertices.resize(model.bufferViews[1].byteLength / sizeof(Vertex));
+
+    std::memcpy(result.indices.data(), model.buffers[0].data.data(), model.bufferViews[0].byteLength);
+    std::memcpy(result.vertices.data(), model.buffers[0].data.data() + model.bufferViews[1].byteOffset, model.bufferViews[1].byteLength);
+  }
+
+  {
+    std::size_t totalPrimitives = 0;
+    for (const auto& mesh : model.meshes)
+      totalPrimitives += mesh.primitives.size();
+    result.relems.reserve(totalPrimitives);
+  }
+
+  result.meshes.reserve(model.meshes.size());
+
+  for (const auto& mesh : model.meshes)
+  {
+    result.meshes.push_back(Mesh{
+      .firstRelem = static_cast<std::uint32_t>(result.relems.size()),
+      .relemCount = static_cast<std::uint32_t>(mesh.primitives.size()),
+    });
+
+    for (const auto& prim : mesh.primitives)
+    {
+      if (prim.mode != TINYGLTF_MODE_TRIANGLES)
+      {
+        spdlog::warn(
+          "Encountered a non-triangles primitive, these are not supported for now, skipping it!");
+        --result.meshes.back().relemCount;
+        continue;
+      }
+
+      std::array accessors{
+        &model.accessors[prim.indices],
+        &model.accessors[prim.attributes.at("POSITION")],
+      };
+
+      result.relems.push_back(RenderElement{
+        .vertexOffset = static_cast<std::uint32_t>(accessors[1]->byteOffset / sizeof(Vertex)),
+        .indexOffset = static_cast<std::uint32_t>(accessors[0]->byteOffset / sizeof(uint32_t)),
+        .indexCount = static_cast<std::uint32_t>(accessors[0]->count),
+      });
+    }
+  }
+
+  return result;
+}
+
 
 SceneManager::ProcessedMeshes SceneManager::processMeshes(const tinygltf::Model& model) const
 {
@@ -369,6 +425,27 @@ void SceneManager::uploadData(
 
   transferHelper.uploadBuffer<Vertex>(*oneShotCommands, unifiedVbuf, 0, vertices);
   transferHelper.uploadBuffer<std::uint32_t>(*oneShotCommands, unifiedIbuf, 0, indices);
+}
+
+void SceneManager::selectBakedScene(std::filesystem::path path)
+{
+  auto maybeModel = loadModel(path);
+  if (!maybeModel.has_value())
+    return;
+
+  auto model = std::move(*maybeModel);
+
+  // NOTE: you might want to store these on the GPU for GPU-driven rendering.
+  auto [instMats, instMeshes] = processInstances(model);
+  instanceMatrices = std::move(instMats);
+  instanceMeshes = std::move(instMeshes);
+
+  auto [verts, inds, relems, meshs] = processBakedMeshes(model);
+
+  renderElements = std::move(relems);
+  meshes = std::move(meshs);
+
+  uploadData(verts, inds);
 }
 
 void SceneManager::selectScene(std::filesystem::path path)
