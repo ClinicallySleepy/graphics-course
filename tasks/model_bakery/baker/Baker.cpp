@@ -390,6 +390,13 @@ void Baker::updateAccessors(tinygltf::Model& model, ProcessedMeshes meshes) {
         }
 
         if (hasNormals) {
+          prim.attributes["POSITION"] = static_cast<int>(model.accessors.size());
+          auto& accessor = model.accessors.emplace_back(positionAccessor);
+          accessor.byteOffset += relem.vertexOffset * sizeof(Vertex);
+          accessor.count = relem.indexCount;
+        }
+
+        if (hasNormals) {
           prim.attributes["NORMAL"] = static_cast<int>(model.accessors.size());
           auto& accessor = model.accessors.emplace_back(normalAccessor);
           accessor.byteOffset += relem.vertexOffset * sizeof(Vertex);
