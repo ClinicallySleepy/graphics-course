@@ -54,7 +54,7 @@ std::optional<tinygltf::Model> Baker::loadModel(const std::filesystem::path& pat
   bool success = false;
 
   // Load the glTF model from the specified file
-  success = loader.LoadASCIIFromFile(&model, &error, &warning, path);
+  success = loader.LoadASCIIFromFile(&model, &error, &warning, path.string());
   auto extension = path.extension();
   if (extension == ".gltf")
     success = loader.LoadASCIIFromFile(&model, &error, &warning, path.string());
