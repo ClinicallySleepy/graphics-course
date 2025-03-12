@@ -292,7 +292,7 @@ void Baker::updateBuffer(tinygltf::Model& model, ProcessedMeshes meshes, std::fi
   int verticesSize = meshes.vertices.size() * sizeof(Vertex);
 
   buffer.name = path.stem().string();
-  // buffer.uri = path.parent_path() / (buffer.name + "_baked.bin");
+  buffer.uri = buffer.name + "_baked.bin";
   buffer.data.resize(indicesSize + verticesSize);
 
   memcpy(buffer.data.data(), meshes.indices.data(), indicesSize);
