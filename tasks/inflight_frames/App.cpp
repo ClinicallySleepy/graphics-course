@@ -290,7 +290,7 @@ void App::addMipLevels(etna::Image& image, vk::CommandBuffer& command_buffer, si
 void App::createCheckerImage() {
   auto commandBuffer = commandManager->acquireNext();
   int width, height;
-  auto imageData = stbi_load("../resources/textures/shadertoy_checker.png", &width, &height, nullptr, 4);
+  auto imageData = stbi_load(GRAPHICS_COURSE_RESOURCES_ROOT "/textures/shadertoy_checker.png", &width, &height, nullptr, 4);
 
   ETNA_VERIFY(imageData);
 
@@ -314,7 +314,7 @@ void App::createSkyboxImage() {
   stbi_uc* imagesData[6];
 
   for (int i = 0; i < 6; ++i) {
-    std::string filepath = std::format("../resources/textures/shadertoy_skybox{}.jpg", i);
+    std::string filepath = std::format(GRAPHICS_COURSE_RESOURCES_ROOT "/textures/shadertoy_skybox{}.jpg", i);
 
     imagesData[i] = stbi_load(filepath.c_str(), &width, &height, nullptr, 4);
     ETNA_VERIFY(imagesData[i]);
