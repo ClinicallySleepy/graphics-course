@@ -62,7 +62,7 @@ std::optional<tinygltf::Model> Baker::loadModel(const std::filesystem::path& pat
     success = loader.LoadBinaryFromFile(&model, &error, &warning, path.string());
   else
   {
-    spdlog::error("glTF: Unknown glTF file extension: '{}'. Expected .gltf or .glb.", extension);
+    spdlog::error("glTF: Unknown glTF file extension: '{}'. Expected .gltf or .glb.", extension.string());
     return std::nullopt;
   }
 
