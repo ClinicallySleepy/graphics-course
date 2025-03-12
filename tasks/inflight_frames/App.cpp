@@ -275,7 +275,6 @@ void App::addMipLevels(etna::Image& image, vk::CommandBuffer& command_buffer, si
     command_buffer.pipelineBarrier2(depInfo);
     etna::flush_barriers(command_buffer);
   }
-  std::this_thread::sleep_for(std::chrono::milliseconds(13));
   ETNA_CHECK_VK_RESULT(command_buffer.end());
 
   vk::SubmitInfo submitInfo{
@@ -304,7 +303,6 @@ void App::createCheckerImage() {
     .mipLevels = mipLevels,
   };
   checkerImage = etna::create_image_from_bytes(imageInfo, commandBuffer, imageData);
-  // addMipLevels(checkerImage, commandBuffer, mipLevels, width, height);
   stbi_image_free(imageData);
 }
 
@@ -390,7 +388,7 @@ void App::createSkyboxImage() {
   ETNA_CHECK_VK_RESULT(etna::get_context().getQueue().waitIdle());
 
   stagingBuf.reset();
-  addMipLevels(skyboxImage, commandBuffer, mipLevels, width, height, imageInfo.layers);
+  // addMipLevels(skyboxImage, commandBuffer, mipLevels, width, height, imageInfo.layers);
 }
 
 void App::drawFrame()
@@ -445,7 +443,7 @@ void App::drawFrame()
         currentCmdBuf.bindPipeline(vk::PipelineBindPoint::eGraphics, proceduralPipeline.getVkPipeline());
         currentCmdBuf.bindDescriptorSets(
           vk::PipelineBindPoint::eGraphics,
-          graphicsPipeline.getVkPipelineLayout(),
+          proceduralPipeline.getVkPipelineLayout(),
           0,
           1,
           &vkSet,
@@ -466,7 +464,7 @@ void App::drawFrame()
             etna::Binding{0, proceduralImage.genBinding(defaultSampler.get(), vk::ImageLayout::eShaderReadOnlyOptimal)},
             etna::Binding{1, checkerImage.genBinding(checkerSampler.get(), vk::ImageLayout::eShaderReadOnlyOptimal)},
             etna::Binding{2, skyboxImage.genBinding(skyboxSampler.get(), vk::ImageLayout::eShaderReadOnlyOptimal, etna::Image::ViewParams({
-              .baseMip = 1,
+              .baseMip = 0,
               .type = vk::ImageViewType::eCube,
             }))},
             etna::Binding{3, currentConstants.genBinding()},
@@ -496,11 +494,20 @@ void App::drawFrame()
       };
     }
 
+    etna::set_state(
+        currentCmdBuf,
+        backbuffer,
+        // This looks weird, but is correct. Ask about it later.
+        vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+        {},
+        vk::ImageLayout::ePresentSrcKHR,
+        vk::ImageAspectFlagBits::eColor);
     // And of course flush the layout transition.
     etna::flush_barriers(currentCmdBuf);
     ETNA_READ_BACK_GPU_PROFILING(currentCmdBuf);
 
     ETNA_CHECK_VK_RESULT(currentCmdBuf.end());
+    std::this_thread::sleep_for(std::chrono::milliseconds(8));
 
     // We are done recording GPU commands now and we can send them to be executed by the GPU.
     // Note that the GPU won't start executing our commands before the semaphore is
