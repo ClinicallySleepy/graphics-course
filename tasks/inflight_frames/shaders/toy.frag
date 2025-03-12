@@ -146,8 +146,8 @@ float sdf(vec3 point) {
 }
 
 vec3 raymarch(vec3 from, vec3 direction, out bool hit, out int object) {
-    const int maxSteps = 15000;
-    const float maxPath = 15000.0;
+    const int maxSteps = 500;
+    const float maxPath = 500.0;
     const float epsilon = 0.001;
 
     float pathChange = 0.;
