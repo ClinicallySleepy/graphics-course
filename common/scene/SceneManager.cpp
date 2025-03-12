@@ -440,9 +440,7 @@ void SceneManager::selectBakedScene(std::filesystem::path path)
   instanceMatrices = std::move(instMats);
   instanceMeshes = std::move(instMeshes);
 
-  spdlog::info("Start processing meshes");
   auto [verts, inds, relems, meshs] = processBakedMeshes(model);
-  spdlog::info("Finish processing meshes");
 
   renderElements = std::move(relems);
   meshes = std::move(meshs);
