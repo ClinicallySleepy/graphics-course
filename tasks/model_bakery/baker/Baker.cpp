@@ -42,6 +42,7 @@ void Baker::bakeScene(std::filesystem::path& path)
   std::string output = path.parent_path() / (path.stem().string() + "_baked.gltf");
   spdlog::info("Writing to {}", output);
   tinygltf::TinyGLTF loader;
+  loader.SetImagesAsIs(true);
   loader.WriteGltfSceneToFile(&model, output, false, false, true, false);
 }
 
