@@ -352,18 +352,18 @@ void Baker::updateAccessors(tinygltf::Model& model, ProcessedMeshes meshes) {
   normalAccessor.normalized = true;
 
   tinygltf::Accessor texcoordAccessor;
-  normalAccessor.bufferView = 1;
-  normalAccessor.byteOffset = 16;
-  normalAccessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
-  normalAccessor.type = TINYGLTF_TYPE_VEC2;
-  normalAccessor.normalized = false;
+  texcoordAccessor.bufferView = 1;
+  texcoordAccessor.byteOffset = 16;
+  texcoordAccessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
+  texcoordAccessor.type = TINYGLTF_TYPE_VEC2;
+  texcoordAccessor.normalized = false;
 
   tinygltf::Accessor tangentAccessor;
-  normalAccessor.bufferView = 1;
-  normalAccessor.byteOffset = 24;
-  normalAccessor.componentType = TINYGLTF_COMPONENT_TYPE_BYTE;
-  normalAccessor.type = TINYGLTF_TYPE_VEC4;
-  normalAccessor.normalized = true;
+  tangentAccessor.bufferView = 1;
+  tangentAccessor.byteOffset = 24;
+  tangentAccessor.componentType = TINYGLTF_COMPONENT_TYPE_BYTE;
+  tangentAccessor.type = TINYGLTF_TYPE_VEC4;
+  tangentAccessor.normalized = true;
 
   model.accessors.clear();
 
