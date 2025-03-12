@@ -151,11 +151,11 @@ SceneManager::ProcessedMeshes SceneManager::processBakedMeshes(const tinygltf::M
   ProcessedMeshes result;
 
   {
-    result.indices.resize(model.bufferViews[0].byteLength);
-    result.vertices.resize(model.bufferViews[1].byteLength);
+    result.indices.resize(model.bufferViews[0].byteLength / sizeof(uint32_t));
+    result.vertices.resize(model.bufferViews[1].byteLength / sizeof(Vertex));
 
-    std::memcpy(result.indices.data() , model.buffers[0].data.data(), model.bufferViews[0].byteLength);
-    std::memcpy(result.vertices.data(), model.buffers[1].data.data() + model.bufferViews[1].byteOffset, model.bufferViews[1].byteLength);
+    std::memcpy(result.indices.data(), model.buffers[0].data.data(), model.bufferViews[0].byteLength);
+    std::memcpy(result.vertices.data(), model.buffers[0].data.data() + model.bufferViews[1].byteOffset, model.bufferViews[1].byteLength);
   }
 
   {
@@ -166,6 +166,7 @@ SceneManager::ProcessedMeshes SceneManager::processBakedMeshes(const tinygltf::M
   }
 
   result.meshes.reserve(model.meshes.size());
+
   for (const auto& mesh : model.meshes)
   {
     result.meshes.push_back(Mesh{
@@ -189,8 +190,8 @@ SceneManager::ProcessedMeshes SceneManager::processBakedMeshes(const tinygltf::M
       };
 
       result.relems.push_back(RenderElement{
-        .vertexOffset = static_cast<std::uint32_t>(accessors[0]->byteOffset / sizeof(Vertex)),
-        .indexOffset = static_cast<std::uint32_t>(accessors[1]->byteOffset / sizeof(uint32_t)),
+        .vertexOffset = static_cast<std::uint32_t>(accessors[1]->byteOffset / sizeof(Vertex)),
+        .indexOffset = static_cast<std::uint32_t>(accessors[0]->byteOffset / sizeof(uint32_t)),
         .indexCount = static_cast<std::uint32_t>(accessors[0]->count),
       });
     }
@@ -198,6 +199,7 @@ SceneManager::ProcessedMeshes SceneManager::processBakedMeshes(const tinygltf::M
 
   return result;
 }
+
 
 SceneManager::ProcessedMeshes SceneManager::processMeshes(const tinygltf::Model& model) const
 {
